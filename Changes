@@ -1,4 +1,7 @@
 Revision history for Perl extension HTML::Copy.
 
+1.1.1
+	* fix to forget use Carp
+	* use in memory file instead of dummyIO
 1.1
 	* First version to update CPAN
