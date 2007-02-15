@@ -19,7 +19,7 @@ use base qw(HTML::Parser);
 
 #use Data::Dumper;
 
-our $VERSION = '1.1.1';
+our $VERSION = '1.11';
 
 =head1 NAME
 
