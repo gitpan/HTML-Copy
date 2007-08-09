@@ -5,13 +5,14 @@ use strict;
 use warnings;
 use File::Spec;
 use File::Basename;
+use File::Path;
 use Cwd;
 use IO::File;
 use utf8;
 use Encode;
 use Encode::Guess;
 use Carp;
-#use Data::Dumper;
+use Data::Dumper;
 
 use HTML::Parser 3.40;
 use HTML::HeadParser;
@@ -34,11 +35,11 @@ HTML::Copy - copy a HTML file without breaking links.
 
 =head1 VERSION
 
-Version 1.2
+Version 1.21
 
 =cut
 
-our $VERSION = '1.2';
+our $VERSION = '1.21';
 
 =head1 SYMPOSIS
 
@@ -140,7 +141,7 @@ Parse contents of $source_path given in new method, change links and write into 
 
 sub copy_to {
     my ($self, $destination_path) = @_;
-    $self->set_destination($destination_path);
+    $destination_path = $self->set_destination($destination_path);
     my $io_layer = $self->io_layer();
     
     my $fh = IO::File->new($destination_path, ">$io_layer");
@@ -167,7 +168,7 @@ Parse contents of $source_path given in new method, change links and return HTML
 
 sub parse_to {
     my ($self, $destination_path) = @_;
-    $self->set_destination($destination_path);
+    $destination_path = $self->set_destination($destination_path);
     $self->io_layer;
     
     my $output = '';
@@ -189,6 +190,7 @@ sub parse_to {
 Get and set PerlIO layer to read $source_path and to write $destination_path. Usualy it was automatically determined by $source_path's charset tag. If charset is not specified, Encode::Guess module will be used.
 
 =cut
+
 sub io_layer {
     my $self = shift @_;
     if (@_) {
@@ -293,6 +295,8 @@ sub set_destination {
     if (-d $destination_path) {
         my $file_name = basename($self->source_path);
         $destination_path = File::Spec->catfile($destination_path, $file_name);
+    } else {
+        mkpath(dirname($destination_path));
     }
 
     return $self->destination_path($destination_path);
@@ -370,6 +374,7 @@ sub change_link {
     my $result_uri;
     my $abs_uri = $uri->abs( $self->source_uri );
     my $abs_path = $abs_uri->file;
+
     if (-e $abs_path) {
         $result_uri = $abs_uri->rel($self->destination_uri);
     } else {
