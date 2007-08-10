@@ -1,12 +1,13 @@
 # http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         HTML-Copy
-version:      1.21
+version:      1.22
 version_from: lib/HTML/Copy.pm
 installdirs:  site
 requires:
     Class::Accessor:               0
     HTML::Parser:                  3.4
+    HTTP::Headers:                 0
     Test::More:                    0
     URI:                           0
 
