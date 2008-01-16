@@ -12,7 +12,7 @@ use utf8;
 use Encode;
 use Encode::Guess;
 use Carp;
-use Data::Dumper;
+#use Data::Dumper;
 
 use HTML::Parser 3.40;
 use HTML::HeadParser;
@@ -35,11 +35,11 @@ HTML::Copy - copy a HTML file without breaking links.
 
 =head1 VERSION
 
-Version 1.22
+Version 1.23
 
 =cut
 
-our $VERSION = '1.22';
+our $VERSION = '1.23';
 
 =head1 SYMPOSIS
 
@@ -305,7 +305,8 @@ sub set_destination {
 sub check_encoding {
     my ($self) = @_;
     my $data;
-    open my $in, "<", $self->source_path;
+    open my $in, "<", $self->source_path
+                    or die "Can't open $self->source_path.";
     {local $/; $data = <$in>;}
     close $in;
     
