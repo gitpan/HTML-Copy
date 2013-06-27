@@ -6,26 +6,24 @@ use warnings;
 use File::Spec;
 use File::Basename;
 use File::Path;
-#use Cwd;
 use utf8;
 use Encode;
 use Encode::Guess;
 use Carp;
-#use Data::Dumper;
 
 use HTML::Parser 3.40;
 use HTML::HeadParser;
 use URI::file;
 
-use base qw(HTML::Parser Class::Accessor);
+use base qw(HTML::Parser Class::Accessor::Fast);
 
 __PACKAGE__->mk_accessors(qw(link_attributes
                             has_base));
 
 #use Data::Dumper;
 
-our @default_link_attributes = ('src', 'href', 'background', 'csref', 'livesrc');
-# 'livesrc' and 'csref' are uesed in Adobe GoLive
+our @default_link_attributes = ('src', 'href', 'background', 'csref', 'livesrc', 'user');
+# 'livesrc', 'user' and 'csref' are uesed in Adobe GoLive
 
 =head1 NAME
 
@@ -33,11 +31,11 @@ HTML::Copy - copy a HTML file without breaking links.
 
 =head1 VERSION
 
-Version 1.3
+Version 1.31
 
 =cut
 
-our $VERSION = '1.3';
+our $VERSION = '1.31';
 
 =head1 SYMPOSIS
 
@@ -112,7 +110,7 @@ sub parse_file($$$) {
 
     $p = HTML::Copy->new($source);
 
-Make an instance of this module with specifing a source of HTML.
+Make an instance of this module with specifying a source of HTML.
 
 The argument $source can be a file path or a file handle. When a file handle is passed, you may need to indicate a file path of the passed file handle by the method L<"source_path">. If calling L<"source_path"> is omitted, it is assumed that the location of the file handle is the current working directory.
 
@@ -127,7 +125,10 @@ sub new {
         @$self{@keys} = @args{@keys};
     } else {
         my $file = shift @_;
-        if (!ref($file) && (ref(\$file) ne "GLOB")) {
+        my $ref = ref($file);
+        if ($ref =~ /^Path::Class::File/) {
+            $self->source_path($file);
+        } elsif (! $ref && (ref(\$file) ne 'GLOB')) {
             $self->source_path($file);
         } else {
             $self->source_handle($file);
@@ -136,7 +137,7 @@ sub new {
     
     $self->link_attributes(\@default_link_attributes);
     $self->has_base(0);
-    
+    $self->attr_encoded(1);
     return $self;
 }
 
@@ -250,7 +251,6 @@ sub encoding {
     if ($self->{'encoding'}) {
         return $self->{'encoding'};
     }
-    
     my $in = $self->source_handle;
     my $data = do {local $/; <$in>;};
     my $p = HTML::HeadParser->new;
@@ -289,7 +289,7 @@ sub encoding {
     $p->io_layer;
     $p->io_layer(':utf8');
 
-Get and set PerlIO layer to read the source path and to write the destination path. Usualy it was automatically determined by $source_path's charset tag. If charset is not specified, Encode::Guess module will be used.
+Get and set PerlIO layer to read the source path and to write the destination path. Usually it was automatically determined by $source_path's charset tag. If charset is not specified, Encode::Guess module will be used.
 
 =cut
 
@@ -312,7 +312,7 @@ sub io_layer {
     @suspects = $p->encode_sustects;
     $p->encode_suspects(qw/shiftjis euc-jp/);
 
-Add suspects of text encoding to guess the text encoding of the source HTML. If the source HTML have charset tag, it is not requred to add suspects.
+Add suspects of text encoding to guess the text encoding of the source HTML. If the source HTML have charset tag, it is not required to add suspects.
 
 =cut
 
@@ -361,9 +361,28 @@ Tetsuro KURITA <tkurita@mac.com>
 
 sub declaration { $_[0]->output("<!$_[1]>")     }
 sub process     { $_[0]->output($_[2])          }
-sub comment     { $_[0]->output("<!--$_[1]-->") }
 sub end         { $_[0]->output($_[2])          }
 sub text        { $_[0]->output($_[1])          }
+
+sub comment     {
+    my ($self, $comment) = @_;
+    if ($comment =~ /InstanceBegin template="([^"]+)"/) {
+        my $uri = URI->new($1);
+        my $newlink = $self->change_link($uri);
+        $comment = " InstanceBegin template=\"$newlink\" ";
+    }
+    
+    $self->output("<!--$comment-->");
+}
+
+sub process_link {
+    my ($self, $link_path)= @_;
+    return undef if ($link_path =~ /^\$/);
+    return undef if ($link_path =~ /^\[%.*%\]$/);
+    my $uri = URI->new($link_path);
+    return undef if ($uri->scheme);
+    return $self->change_link($uri);
+}
 
 sub start {
     my ($self, $tag, $attr_dict, $attr_names, $tag_text) = @_; 
@@ -376,15 +395,23 @@ sub start {
         my $is_changed = 0;
         foreach my $an_attr (@{$self->link_attributes}) {
             if (exists($attr_dict->{$an_attr})){
-                my $link_path = $attr_dict->{$an_attr};
-                next if ($link_path =~ /^\$/);
-                my $uri = URI->new($link_path);
-                next if ($uri->scheme);
+                my $newlink = $self->process_link($attr_dict->{$an_attr});
+                next unless ($newlink);
+                $attr_dict->{$an_attr} = $newlink;
                 $is_changed = 1;
-                $attr_dict->{$an_attr} = $self->change_link($uri);
             }
         }
-    
+        
+        if ($tag eq 'param') {
+            if ($attr_dict->{'name'} eq 'src') {
+                my $newlink = $self->process_link($attr_dict->{'value'});
+                if ($newlink) {
+                    $attr_dict->{'value'} = $newlink;
+                    $is_changed = 1;
+                }
+            }
+        }
+        
         if ($is_changed) {
             my $attrs_text = $self->build_attributes($attr_dict, $attr_names);
             $tag_text = "<$tag $attrs_text>";
@@ -462,7 +489,7 @@ sub change_link {
         $result_uri = $abs_uri->rel($self->destination_uri);
     } else {
         warn("$abs_path is not found.\nThe link to this path is not changed.\n");
-        $result_uri = $uri;
+        return "";
     }
     
     return $result_uri->as_string;
@@ -478,9 +505,8 @@ sub source_handle {
     
     if (@_) {
         $self->{'source_handle'} = shift @_;
-    }
-    elsif (!$self->{'source_handle'}) {
-        my $path = $self->source_path or croak "source_paht is undefined.";
+    } elsif (!$self->{'source_handle'}) {
+        my $path = $self->source_path or croak "source_path is undefined.";
         open my $in, "<", $path or croak "Can't open $path.";
         $self->{'source_handle'} = $in;
     }
